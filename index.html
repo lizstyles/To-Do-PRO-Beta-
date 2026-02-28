@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>ToDo Pro Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+
+<!-- AUTH SCREEN -->
+<div id="auth-screen">
+  <div class="auth-card modern-auth">
+
+    <h2 class="auth-title">Crear cuenta</h2>
+
+    <div class="input-group">
+      <label>Email</label>
+      <input type="email" id="email" placeholder="correo@ejemplo.com">
+    </div>
+
+    <div class="input-group password-wrapper">
+      <label>Password</label>
+      <input type="password" id="password" placeholder="••••••••">
+      <button type="button" onclick="togglePassword()" class="eye-btn">👁</button>
+    </div>
+
+    <button class="primary auth-btn" onclick="register()">Registrarse</button>
+
+    <p class="switch-auth">
+      ¿Ya tienes cuenta?
+      <span onclick="login()">Iniciar sesión</span>
+    </p>
+
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+  <div class="wrapper">
+
+    <aside class="sidebar">
+      <div>
+        <h3>Dashboard</h3>
+        <p id="welcomeUser"></p>
+      </div>
+
+      <div>
+        <button onclick="toggleDarkMode()">🌙 Modo oscuro</button>
+        <button onclick="logout()" class="danger">Cerrar sesión</button>
+      </div>
+    </aside>
+
+    <main class="main">
+
+      <h2>Bienvenido de nuevo 👋</h2>
+
+      <div class="cards">
+        <div class="card">
+          <span>Total</span>
+          <h3 id="totalTasks">0</h3>
+        </div>
+
+        <div class="card">
+          <span>Pendientes</span>
+          <h3 id="pendingTasks">0</h3>
+        </div>
+
+        <div class="card">
+          <span>Completadas</span>
+          <h3 id="completedTasks">0</h3>
+        </div>
+
+        <div class="card">
+          <span>Progreso</span>
+          <h3 id="progressText">0%</h3>
+        </div>
+      </div>
+
+      <div class="dashboard-row">
+
+        <div class="progress-box">
+          <h3>Progreso General</h3>
+          <div class="progress-circle" id="progressCircle">
+            <span>0%</span>
+          </div>
+        </div>
+
+        <div class="tasks-box">
+          <h3>📌 Próximas entregas</h3>
+          <div id="tasks"></div>
+        </div>
+
+      </div>
+
+      <div class="new-task">
+        <h3>Nueva tarea</h3>
+
+        <div class="minimal-input">
+          <input type="text" id="title" placeholder="Título obligatorio">
+        </div>
+
+        <div class="minimal-input">
+          <textarea id="description" placeholder="Descripción opcional"></textarea>
+        </div>
+
+        <button class="primary" onclick="addTask()">Guardar</button>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script>
+const { createClient } = supabase;
+const supabaseClient = createClient(
+"https://ddfgpkrbwouwfyclltdh.supabase.co",
+"sb_publishable_TiTJHy6shPj_R0086_ftGg_96jEYOY-"
+);
+
+let currentUser=null;
+let tasksData=[];
+
+async function init(){
+  const { data:{ session } } = await supabaseClient.auth.getSession();
+  if(session){
+    currentUser=session.user;
+    showApp();
+  }
+  if(localStorage.getItem("darkMode")==="true"){
+    document.body.classList.add("dark");
+  }
+}
+init();
+
+function togglePassword(){
+  password.type=password.type==="password"?"text":"password";
+}
+
+async function register(){
+  const { error }=await supabaseClient.auth.signUp({
+    email:email.value,
+    password:password.value
+  });
+  if(error) alert(error.message);
+  else alert("Registro exitoso");
+}
+
+async function login(){
+  const { data,error }=await supabaseClient.auth.signInWithPassword({
+    email:email.value,
+    password:password.value
+  });
+  if(error) alert(error.message);
+  else{
+    currentUser=data.user;
+    showApp();
+  }
+}
+
+async function logout(){
+  await supabaseClient.auth.signOut();
+  location.reload();
+}
+
+function showApp(){
+  document.getElementById("auth-screen").style.display="none";
+  document.getElementById("app").classList.remove("hidden");
+  welcomeUser.innerText=currentUser.email;
+  refreshApp();
+  enableRealtime();
+}
+
+async function refreshApp(){
+  await loadTasks();
+  updateStats();
+}
+
+async function addTask(){
+  if(!title.value.trim()) return alert("Título obligatorio");
+
+  await supabaseClient.from("tasks").insert([{
+    title:title.value,
+    description:description.value,
+    completed:false,
+    user_id:currentUser.id
+  }]);
+
+  title.value="";
+  description.value="";
+  refreshApp();
+}
+
+async function loadTasks(){
+  const { data }=await supabaseClient.from("tasks")
+    .select("*")
+    .eq("user_id",currentUser.id)
+    .order("created_at",{ascending:false});
+
+  tasksData=data||[];
+  renderTasks();
+}
+
+function renderTasks(){
+  tasks.innerHTML="";
+  tasksData.forEach(task=>{
+    const div=document.createElement("div");
+    div.className="task";
+    div.innerHTML=`
+      <div class="task-content ${task.completed ? 'task-completed':''}">
+        <strong>${task.title}</strong>
+        <p>${task.description||""}</p>
+      </div>
+      <div class="task-actions">
+        <button class="check-btn" onclick="completeTask('${task.id}',this)">✔</button>
+        <button class="delete-btn" onclick="deleteTask('${task.id}',this)">✖</button>
+      </div>
+    `;
+    tasks.appendChild(div);
+  });
+}
+
+async function completeTask(id,btn){
+  const taskDiv=btn.closest(".task");
+  const content=taskDiv.querySelector(".task-content");
+
+  content.classList.add("task-completed");
+  taskDiv.classList.add("animate-complete");
+
+  setTimeout(async()=>{
+    await supabaseClient.from("tasks")
+      .update({completed:true})
+      .eq("id",id);
+    taskDiv.remove();
+    refreshApp();
+  },400);
+}
+
+async function deleteTask(id,btn){
+  const taskDiv=btn.closest(".task");
+  taskDiv.classList.add("animate-delete");
+
+  setTimeout(async()=>{
+    await supabaseClient.from("tasks")
+      .delete()
+      .eq("id",id);
+    taskDiv.remove();
+    refreshApp();
+  },400);
+}
+
+function updateStats(){
+  const total=tasksData.length;
+  const completed=tasksData.filter(t=>t.completed).length;
+  const pending=total-completed;
+  const percent=total?Math.round((completed/total)*100):0;
+
+  totalTasks.innerText=total;
+  completedTasks.innerText=completed;
+  pendingTasks.innerText=pending;
+  progressText.innerText=percent+"%";
+
+  animateProgress(percent);
+}
+
+function animateProgress(percent){
+  const circle=document.getElementById("progressCircle");
+  let current=0;
+
+  const interval=setInterval(()=>{
+    if(current>=percent){
+      clearInterval(interval);
+    }else{
+      current++;
+      circle.innerHTML="<span>"+current+"%</span>";
+      circle.style.background=
+      `conic-gradient(var(--primary) ${current*3.6}deg,#e5e7eb ${current*3.6}deg)`;
+    }
+  },8);
+}
+
+function enableRealtime(){
+  supabaseClient.channel('tasks-live')
+  .on('postgres_changes',
+    {event:'*',schema:'public',table:'tasks'},
+    ()=>refreshApp()
+  ).subscribe();
+}
+
+function toggleDarkMode(){
+  document.body.classList.toggle("dark");
+  localStorage.setItem("darkMode",
+    document.body.classList.contains("dark"));
+}
+</script>
+
+</body>
+</html>
