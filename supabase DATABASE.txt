@@ -1,0 +1,126 @@
+1. Creación del cliente de Supabase
+
+La conexión inicia con esta parte del código:
+
+const { createClient } = supabase;
+const supabaseClient = createClient(
+  "https://ddfgpkrbwouwfyclltdh.supabase.co",
+  "sb_publishable_..."
+);
+
+Aquí ocurre lo siguiente:
+
+createClient crea una instancia que permite comunicar tu aplicación con Supabase.
+
+El primer parámetro es la URL del proyecto (identifica tu base de datos en Supabase).
+
+El segundo parámetro es la clave pública (publishable key), que autoriza al frontend a interactuar con la base de datos según las reglas definidas.
+
+Desde ese momento, supabaseClient es el objeto que maneja todas las operaciones con autenticación y base de datos.
+
+2. Autenticación de usuarios
+
+Registro:
+
+supabaseClient.auth.signUp({
+  email: email.value,
+  password: password.value
+});
+
+Inicio de sesión:
+
+supabaseClient.auth.signInWithPassword({
+  email: email.value,
+  password: password.value
+});
+
+Cuando un usuario se registra o inicia sesión:
+
+Supabase valida las credenciales.
+
+Si son correctas, devuelve una sesión activa.
+
+Esa sesión contiene información del usuario, incluido su id.
+
+Ese id se usa luego para relacionar las tareas con el usuario correspondiente.
+
+3. Inserción de datos en la base de datos
+
+Cuando se crea una nueva tarea:
+
+await supabaseClient.from("tasks").insert([{
+  title: title.value,
+  description: description.value,
+  completed: false,
+  user_id: currentUser.id
+}]);
+
+Aquí sucede lo siguiente:
+
+.from("tasks") indica la tabla de la base de datos.
+
+.insert() agrega un nuevo registro.
+
+Se guarda el título, descripción, estado de completado y el user_id.
+
+El user_id vincula la tarea al usuario autenticado.
+
+Esto permite que cada usuario solo vea sus propias tareas.
+
+4. Lectura de datos
+
+Para obtener las tareas del usuario:
+
+supabaseClient
+  .from("tasks")
+  .select("*")
+  .eq("user_id", currentUser.id)
+  .order("created_at", { ascending: false });
+
+Aquí:
+
+.select("*") obtiene todas las columnas.
+
+.eq("user_id", currentUser.id) filtra solo las tareas del usuario actual.
+
+.order() organiza los resultados.
+
+Los datos obtenidos se guardan en tasksData y luego se renderizan en la interfaz.
+
+5. Actualización de datos
+
+Cuando una tarea se marca como completada:
+
+supabaseClient
+  .from("tasks")
+  .update({ completed: true })
+  .eq("id", id);
+
+Se busca la tarea por su id y se cambia el valor del campo completed.
+
+6. Eliminación de datos
+
+Para borrar una tarea:
+
+supabaseClient
+  .from("tasks")
+  .delete()
+  .eq("id", id);
+
+Se elimina el registro correspondiente al id indicado.
+
+7. Actualización en tiempo real
+supabaseClient.channel('tasks-live')
+  .on('postgres_changes',
+    { event: '*', schema: 'public', table: 'tasks' },
+    () => refreshApp()
+  )
+  .subscribe();
+
+Esto crea una suscripción en tiempo real:
+
+Supabase escucha cambios en la tabla tasks.
+
+Cada vez que hay una inserción, actualización o eliminación, se ejecuta refreshApp().
+
+La interfaz se actualiza automáticamente sin recargar la página.
